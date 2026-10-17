@@ -48,9 +48,18 @@ python3 stock_analyser_gui.py
 
 Danach im Browser http://127.0.0.1:5000 öffnen. Die Oberfläche bietet dasselbe Formular wie die
 Kommandozeile, dazu Kurs-Charts (mit Bollinger-Bändern, RSI mit Kauf/Verkauf-Grenzen und MACD),
-die letzten Kurswerte und eine Signalliste. Genauso wie im Terminalmodus werden Parameter
-abgefangen statt abstürzen zu können. Die Seite läuft nur lokal auf `127.0.0.1`; Chart.js wird
-per CDN geladen, die Kursdaten kommen weiterhin von Yahoo Finance.
+die letzten Kurswerte und eine Signalliste mit Datum. Genauso wie im Terminalmodus werden
+ungültige Eingaben abgefangen und als Meldung angezeigt statt abstürzen zu können.
+Die Seite läuft nur lokal auf `127.0.0.1`; Chart.js wird per CDN geladen, die Kursdaten kommen
+weiterhin von Yahoo Finance.
+
+Zwei Besonderheiten gegenüber dem Terminalmodus:
+
+- Gleichem Ticker/Zeitraum wird nur einmal pro 5 Minuten nachgeladen – das Umschalten
+  zwischen den Indikatoren ist dadurch sofort, nutzt aber Daten von maximal 5 Minuten Alter.
+- Charts zeigen die letzten 252 Handelstage, die Signalliste die letzten 100 Signale
+  (mit Hinweis, wenn gekürzt wurde). `GET /health` liefert `{"status": "ok"}`, falls man
+  prüfen will, ob der Server läuft.
 
 ## Projektstruktur
 
@@ -70,8 +79,9 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest
 ```
 
-Die Tests laufen offline: Der Netzwerkzugriff wird in `tests/test_market_data.py` und
-`tests/test_cli.py` durch Stubs ersetzt, die Indikator-Tests rechnen mit festen Kursreihen.
+Die Tests laufen offline: Der Netzwerkzugriff wird in `tests/test_market_data.py`,
+`tests/test_cli.py` und `tests/test_gui.py` durch Stubs ersetzt, die Indikator-Tests rechnen
+mit festen Kursreihen.
 
 ## Rechenwege
 

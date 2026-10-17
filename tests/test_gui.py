@@ -32,7 +32,7 @@ def test_index_shows_the_form_without_a_ticker(client):
     page = response.get_data(as_text=True)
     assert response.status_code == 200
     assert 'name="ticker"' in page
-    assert "Analyse" in page
+    assert "Analyze" in page
     assert "<canvas" not in page  # no charts before a request
 
 
@@ -87,14 +87,57 @@ def test_invalid_parameter_is_reported(client):
 
     page = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert "bb_std" in page
+    # assert on the error box itself – "bb_std" appears in every page as a form field
+    assert 'class="error">num_std must be &gt; 0, got 0</p>' in page
 
 
 def test_non_numeric_parameter_is_reported(client):
     response = client.get("/?ticker=AAPL&period=1y&indicator=rsi&rsi_period=abc")
 
     page = response.get_data(as_text=True)
-    assert "rsi_period" in page
+    assert "must be a number, got &#39;abc&#39;" in page
+
+
+def test_huge_parameter_is_reported_instead_of_crashing(client):
+    # previously an OverflowError inside pandas -> HTTP 500
+    response = client.get("/?ticker=AAPL&period=1y&indicator=rsi&rsi_period=2147483648")
+
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "must be &lt;= 1000000" in page
+
+
+def test_infinite_parameter_is_reported(client):
+    response = client.get("/?ticker=AAPL&period=1y&indicator=bollinger&bb_std=inf")
+
+    page = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert "must be a finite number" in page
+
+
+def test_error_message_names_the_valid_periods(client):
+    response = client.get("/?ticker=AAPL&period=3 weeks&indicator=rsi")
+
+    page = response.get_data(as_text=True)
+    assert "unknown period" in page
+    assert "1mo, 3mo, 6mo, 1y" in page  # the valid choices are listed
+
+
+def test_selects_fall_back_to_valid_values_after_an_error(client):
+    response = client.get("/?ticker=AAPL&period=3 weeks&indicator=rsi")
+
+    page = response.get_data(as_text=True)
+    assert '<option value="1y" selected>1y</option>' in page
+    assert '<option value="rsi" selected>RSI</option>' in page
+    assert "unknown period &#39;3 weeks&#39;" in page  # the typed value is named in the error
+
+
+def test_result_tables_contain_a_date_column(client):
+    response = client.get("/?ticker=AAPL&period=1y&indicator=rsi")
+
+    page = response.get_data(as_text=True)
+    assert "<th>Date</th>" in page
+    assert "2024-01-01" in page
 
 
 def test_form_values_are_kept_after_a_request(client):
@@ -138,7 +181,9 @@ def test_read_form_uses_defaults_for_empty_fields():
 
 def test_chart_specs_limit_the_number_of_points():
     history = fake_data(rows=400).history
-    specs = gui.chart_specs(history, {"RSI": gui.build_frames("rsi", history["Close"], _params())[ "RSI"]}, _params())
+    frames = gui.build_frames("rsi", history["Close"], _params())
+
+    specs = gui.chart_specs(history, frames, _params())
 
     assert len(specs[0]["labels"]) == gui.CHART_MAX_POINTS
     assert len(specs[0]["datasets"][0]["data"]) == gui.CHART_MAX_POINTS
@@ -182,6 +227,28 @@ def test_cache_reuses_the_download(monkeypatch):
     # two page views, one download – the cache key is case insensitive
     assert calls == [("AAPL", "1y")]
     gui.clear_cache()
+
+
+def test_signals_payload_reports_truncation(monkeypatch):
+    monkeypatch.setattr(gui, "SIGNAL_ROWS_MAX", 2)
+    frames = gui.build_frames("rsi", fake_data(rows=80).history["Close"], _params())
+
+    payload = gui.signals_payload(frames)
+
+    assert payload["truncated"] is True
+    assert len(payload["rows"]) == 2
+    assert payload["total"] > 2
+
+
+def test_table_payload_formats_dates_and_prices():
+    frame = gui.build_frames("rsi", fake_data().history["Close"], _params())["RSI"]
+
+    payload = gui.table_payload(frame)
+
+    assert payload["columns"][0] == "Date"
+    assert payload["rows"][-1][0] == "2024-02-29"  # date only, no time part
+    assert payload["rows"][-1][1] == "85.00"  # price formatted with two decimals
+    assert payload["rows"][-1][3] == "buy"  # the crash at the end
 
 
 def _params(**overrides) -> dict:

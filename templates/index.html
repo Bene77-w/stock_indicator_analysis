@@ -119,7 +119,7 @@
         </div>
       </fieldset>
 
-      <button type="submit">Analyse</button>
+      <button type="submit">Analyze</button>
     </form>
 
     {% if error %}
@@ -137,14 +137,14 @@
     </section>
 
     <section>
-      <h3>Charts (last {{ result.charts[0]['labels'] | length }} days)</h3>
+      <h3>Charts (last {{ result.charts[0]['labels'] | length }} trading days)</h3>
       {% for spec in result.charts %}
       <div class="chart-box"><canvas id="chart-{{ loop.index0 }}"></canvas></div>
       {% endfor %}
     </section>
 
     <section>
-      <h3>Most recent values</h3>
+      <h3>Most recent values ({{ result.table_title }})</h3>
       <table>
         <thead>
           <tr>{% for column in result.table.columns %}<th>{{ column }}</th>{% endfor %}</tr>
@@ -162,6 +162,9 @@
       {% if result.signals.hidden %}
       <p class="note">(no buy/sell signal in the selected period)</p>
       {% else %}
+      {% if result.signals.truncated %}
+      <p class="note">(showing the last {{ result.signals.rows | length }} of {{ result.signals.total }} signals)</p>
+      {% endif %}
       <table>
         <thead>
           <tr>{% for column in result.signals.columns %}<th>{{ column }}</th>{% endfor %}</tr>

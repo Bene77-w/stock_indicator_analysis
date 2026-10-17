@@ -7,6 +7,7 @@ column (``buy`` / ``sell`` / ``-``).
 
 from __future__ import annotations
 
+import math
 import numbers
 from typing import Final, Mapping, Sequence
 
@@ -16,6 +17,7 @@ import pandas as pd
 BUY: Final[str] = "buy"
 SELL: Final[str] = "sell"
 NO_SIGNAL: Final[str] = "-"
+MAX_PERIOD: Final[int] = 1_000_000  # ~2700 years of daily data, far beyond any real use
 
 
 def rsi(
@@ -179,12 +181,16 @@ def _require_positive_int(name: str, value: int, minimum: int = 1) -> int:
         raise ValueError(f"{name} must be an integer, got {value!r}")
     if value < minimum:
         raise ValueError(f"{name} must be >= {minimum}, got {value}")
+    if value > MAX_PERIOD:
+        raise ValueError(f"{name} must be <= {MAX_PERIOD}, got {value}")
     return int(value)
 
 
 def _require_positive_float(name: str, value: float) -> float:
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise ValueError(f"{name} must be a number, got {value!r}")
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite number, got {value}")
     if value <= 0:
         raise ValueError(f"{name} must be > 0, got {value}")
     return float(value)

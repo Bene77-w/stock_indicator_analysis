@@ -74,9 +74,9 @@ def read_form(form: Any) -> tuple[str, str, str, dict[str, float]]:
     period = form.get("period") or "1y"
     indicator = (form.get("indicator") or "rsi").strip().lower()
     if indicator not in INDICATORS:
-        raise ValueError(f"unknown indicator {indicator!r}")
+        raise ValueError(f"unknown indicator {indicator!r}; use one of: {', '.join(INDICATORS)}")
     if period not in VALID_PERIODS:
-        raise ValueError(f"unknown period {period!r}")
+        raise ValueError(f"unknown period {period!r}; use one of: {', '.join(VALID_PERIODS)}")
 
     params = {name: _form_number(form, name, default) for name, default in PARAMETER_DEFAULTS.items()}
     return ticker, period, indicator, params
@@ -169,8 +169,12 @@ def _numbers(series: pd.Series) -> list[float | None]:
 
 
 def table_payload(frame: pd.DataFrame, rows: int = 20) -> dict[str, Any]:
-    """Columns and rows of the tail of a frame, ready for the HTML table."""
-    tail = frame.tail(rows)
+    """Columns and rows of the tail of a frame, ready for the HTML table.
+
+    The date index becomes the first column – a signal without a date is
+    useless to the reader.
+    """
+    tail = frame.reset_index(names="Date").tail(rows)
     return {
         "columns": [str(column) for column in tail.columns],
         "rows": [[_cell(value) for value in row] for row in tail.itertuples(index=False, name=None)],
@@ -180,6 +184,8 @@ def table_payload(frame: pd.DataFrame, rows: int = 20) -> dict[str, Any]:
 def _cell(value: Any) -> str:
     if isinstance(value, str):
         return value
+    if isinstance(value, pd.Timestamp):
+        return value.strftime("%Y-%m-%d")
     if pd.isna(value):
         return ""
     if isinstance(value, float):
@@ -195,8 +201,10 @@ def signals_payload(frames: dict[str, pd.DataFrame]) -> dict[str, Any]:
         combined = indicators.combine_signals(frames)
         columns = [f"{name} signals" for name in frames]
         view = indicators.only_signals(combined, columns)
-    payload = table_payload(view.tail(SIGNAL_ROWS_MAX), rows=SIGNAL_ROWS_MAX)
+    payload = table_payload(view, rows=SIGNAL_ROWS_MAX)
     payload["hidden"] = view.empty
+    payload["truncated"] = len(view) > SIGNAL_ROWS_MAX
+    payload["total"] = len(view)
     return payload
 
 
@@ -223,17 +231,25 @@ def base_context() -> dict[str, Any]:
 def index() -> str:
     """Main page: form, and – after a request – overview, charts and tables."""
     context = base_context()
-    for field in ("ticker", "period", "indicator", *PARAMETER_DEFAULTS):
+    # text inputs keep whatever was typed so the user can correct it;
+    # the two selects only accept values that really exist, otherwise the
+    # browser would silently show the first option
+    for field in ("ticker", *PARAMETER_DEFAULTS):
         value = request.args.get(field)
         if value is not None:
             context[field] = value
+    period_arg = request.args.get("period")
+    if period_arg in VALID_PERIODS:
+        context["period"] = period_arg
+    indicator_arg = (request.args.get("indicator") or "").strip().lower()
+    if indicator_arg in INDICATORS:
+        context["indicator"] = indicator_arg
 
     ticker = context["ticker"].strip()
     if ticker:
         try:
             ticker, period, indicator, params = read_form(request.args)
             context.update({"ticker": ticker, "period": period, "indicator": indicator})
-            context.update({name: request.args.get(name) or "" for name in PARAMETER_DEFAULTS})
 
             data = get_stock(ticker, period)
             close = data.history["Close"]
@@ -245,6 +261,7 @@ def index() -> str:
                 "overview": overview_rows(data.info),
                 "charts": chart_specs(data.history, frames, params),
                 "table": table_payload(next(iter(frames.values()))),
+                "table_title": next(iter(frames)),
                 "signals": signals_payload(frames),
             }
         except (MarketDataError, ValueError) as exc:

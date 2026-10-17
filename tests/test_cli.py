@@ -121,6 +121,18 @@ def test_main_reports_invalid_macd_parameters(monkeypatch, capsys):
     assert "invalid parameter" in captured.err
 
 
+def test_main_reports_absurdly_large_period(monkeypatch, capsys):
+    # an integer beyond the pandas limit used to end in an OverflowError
+    monkeypatch.setattr(stock_analyser, "fetch_stock_data", lambda ticker, period: fake_data(ticker, period))
+
+    exit_code = stock_analyser.main(["AAPL", "1y", "rsi", "--rsi-period", "2147483648"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "invalid parameter" in captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_main_rejects_invalid_tail():
     with pytest.raises(SystemExit):
         stock_analyser.main(["AAPL", "1y", "rsi", "--tail", "0"])
