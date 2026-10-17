@@ -1,229 +1,218 @@
+"""Stock Analyzer – command line interface.
+
+Two ways to use it:
+
+* interactive: ``python3 stock_analyser.py`` – menu guided, ``q`` quits
+* scripted:    ``python3 stock_analyser.py AAPL 1y rsi --signals-only``
+
+The actual work happens in :mod:`market_data` (downloading) and
+:mod:`indicators` (calculation); this module only asks, prints and dispatches.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+from typing import Sequence
+
 import pandas as pd
-import yfinance as yf
-import numpy as np
 
-#settings
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', None)     
-pd.set_option('display.width', None)
-pd.set_option('display.expand_frame_repr', False)
+import indicators
+from market_data import MarketDataError, StockData, fetch_stock_data
 
-    
-
-#Funktionen 
-def show_stock_overview(tickersymbol, period):
-    info = yf.Ticker(tickersymbol).info
-    pa = yf.Ticker(tickersymbol).history(period)
-        
-    df_info = pd.DataFrame([
-        ['Name', info.get('longName', 'N/A')],
-        ['Sector', info.get('sector', 'N/A')],
-        ['Industry', info.get('industry', 'N/A')],
-        ['Current value', f"${info.get('currentPrice', 0):.2f}"],
-        ['Market Cap', f"${info.get('marketCap', 0):.2f}"],
-        ['52 week high', f'${info.get("fiftyTwoWeekHigh",0):.2f}'],
-        ['52 week low', f"${info.get('fiftyTwoWeekLow',0):.2f}"],
-    ])
+QUIT_WORDS = frozenset({"q", "quit", "exit"})
+INDICATOR_ALIASES = {
+    "rsi": "rsi",
+    "macd": "macd",
+    "bollinger": "bollinger",
+    "bollinger bands": "bollinger",
+    "bb": "bollinger",
+    "all": "all",
+    "all indicators": "all",
+}
+INDICATOR_LABELS = {
+    "rsi": "RSI",
+    "macd": "MACD",
+    "bollinger": "Bollinger Bands",
+    "all": "All indicators",
+}
 
 
-    if pa.empty:
-        print(f'Unfortunately it is not possible to analyse {tickersymbol}. Please correct the tickersymbol.')
-        return False 
-    else:
-        print(f'\n======= Overview about {tickersymbol} ========\n\n{df_info.to_string(header=False, index=False)}\n\n{pa.tail(20)}\n\n')
-        return True
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="stock_analyser.py",
+        description=(
+            "Analyse stock prices with RSI, MACD or Bollinger Bands (data from Yahoo Finance). "
+            "Without arguments the program asks for the missing values interactively."
+        ),
+        epilog="The output is a technical analysis, not investment advice.",
+    )
+    parser.add_argument("ticker", nargs="?", help="ticker symbol, e.g. AAPL")
+    parser.add_argument(
+        "period",
+        nargs="?",
+        default="1y",
+        help="history period, e.g. 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max (default: 1y)",
+    )
+    parser.add_argument(
+        "indicator",
+        nargs="?",
+        type=str.lower,
+        metavar="INDICATOR",
+        help="one of: rsi, macd, bollinger, all",
+    )
+    parser.add_argument(
+        "--signals-only",
+        action="store_true",
+        help="print only rows with a buy/sell signal",
+    )
+    parser.add_argument(
+        "--tail",
+        type=int,
+        default=50,
+        metavar="N",
+        help="number of recent rows to print (default: 50)",
+    )
+
+    rsi_group = parser.add_argument_group("RSI")
+    rsi_group.add_argument("--rsi-period", type=int, default=14, help="period in days (default: 14)")
+    rsi_group.add_argument("--rsi-oversold", type=float, default=30.0, help="buy below (default: 30)")
+    rsi_group.add_argument("--rsi-overbought", type=float, default=70.0, help="sell above (default: 70)")
+
+    macd_group = parser.add_argument_group("MACD")
+    macd_group.add_argument("--macd-fast", type=int, default=12, help="fast EMA period (default: 12)")
+    macd_group.add_argument("--macd-slow", type=int, default=26, help="slow EMA period (default: 26)")
+    macd_group.add_argument("--macd-signal", type=int, default=9, help="signal EMA period (default: 9)")
+
+    bb_group = parser.add_argument_group("Bollinger Bands")
+    bb_group.add_argument("--bb-period", type=int, default=20, help="middle band period (default: 20)")
+    bb_group.add_argument("--bb-std", type=float, default=2.0, help="standard deviations (default: 2.0)")
+    return parser
 
 
-def rsi_calc(pa):
-    print('\n\n==================== RSI ====================\n')
-    print('RSI = 100 - 100 / (1 + (avg_gain / avg_loss))')
-    print('Buy if RSI < 30, stock is oversold')
-    print('Sell if RSI > 70, stock is overbought')
-    rsi_period = int(input('Which RSI period (in days) should be used? '))
-    
-    daily_diff = pa['Close'].diff(1)
-    gain = daily_diff.where(daily_diff > 0, 0)
-    loss = daily_diff.where(daily_diff < 0, 0)
-    
-    avg_gain = gain.rolling(window=rsi_period).mean()
-    avg_loss = (-1)*loss.rolling(window=rsi_period).mean()
-    rsi = 100 - (100 / (1 + (avg_gain / avg_loss)))
-    
-    signal = rsi.apply(lambda x: 'buy' if x<30 else ('sell' if x>70 else '-'))
-    
-    df_rsi = pd.DataFrame({
-        'Price': pa['Close'],
-        f'RSI ({rsi_period}d)': rsi,
-        'Signal': signal
-        })
-        
-    rsi_only_signals = df_rsi[df_rsi['Signal'].isin(['buy','sell'])]
-    
-    return rsi, avg_gain, avg_loss, daily_diff, signal, df_rsi, rsi_only_signals, rsi_period
+def normalize_indicator(raw: str) -> str | None:
+    """Map user input to a canonical indicator name, or None if unknown."""
+    return INDICATOR_ALIASES.get(raw.strip().lower())
 
 
-def macd_calc(pa):
-    print("\n\n============ MACD Signals ============\n")
-    print("MACD = small EMA - big EMA")
-    print("Buy when MACD > Signal line")
-    print("Sell when MACD < Signal line")
-    
-    period_ema_small = int(input("\nTime Period for small EMA in days: "))
-    period_ema_big = int(input("Time Period for big EMA in days: "))
-    period_ema_signal = int(input("Time Period for Signal EMA in days: "))
-    
-    ema_small = pa['Close'].ewm(span=period_ema_small).mean()
-    ema_big = pa['Close'].ewm(span=period_ema_big).mean()
-    macd = ema_small - ema_big
-    ema_signal = macd.ewm(span=period_ema_signal).mean()
-    
-    macd_diff_crossunder = (ema_signal > macd) & (ema_signal.shift(1) < macd.shift(1))
-    macd_diff_crossover = (ema_signal < macd) & (ema_signal.shift(1) > macd.shift(1))
-    
-    df_macd = pd.DataFrame({
-        'Price': pa['Close'],
-        'Small EMA': ema_small,
-        'Big EMA': ema_big,
-        'MACD': macd,
-        'Signal EMA': ema_signal,
-        'MACD crossunder': macd_diff_crossunder,
-        'MACD crossover': macd_diff_crossover
-        })
-    
-    df_macd['Signal'] = df_macd.apply(show_buy_sell_signals_macd, axis=1)
-    df_macd_only_signals = df_macd[df_macd['Signal'].isin(['buy','sell'])]
+def calculate(indicator: str, close: pd.Series, args: argparse.Namespace) -> tuple[pd.DataFrame, list[str]]:
+    """Calculate one indicator (or all combined) for a price series.
 
-    return ema_small, ema_big, ema_signal, macd, macd_diff_crossunder, macd_diff_crossover, df_macd, df_macd_only_signals
+    Returns the result frame and the names of its signal columns.
+    """
+    if indicator == "rsi":
+        frame = indicators.rsi(close, args.rsi_period, args.rsi_oversold, args.rsi_overbought)
+        return frame, ["Signal"]
+    if indicator == "macd":
+        frame = indicators.macd(close, args.macd_fast, args.macd_slow, args.macd_signal)
+        return frame, ["Signal"]
+    if indicator == "bollinger":
+        frame = indicators.bollinger_bands(close, args.bb_period, args.bb_std)
+        return frame, ["Signal"]
+    if indicator == "all":
+        combined = indicators.combine_signals(
+            {
+                "RSI": indicators.rsi(close, args.rsi_period, args.rsi_oversold, args.rsi_overbought),
+                "MACD": indicators.macd(close, args.macd_fast, args.macd_slow, args.macd_signal),
+                "BB": indicators.bollinger_bands(close, args.bb_period, args.bb_std),
+            }
+        )
+        return combined, [column for column in combined.columns if column.endswith("signals")]
+    raise ValueError(f"unknown indicator {indicator!r}")
 
 
-def show_buy_sell_signals_macd(df_macd):
-    if df_macd['MACD crossunder']:
-        return 'sell'
-    elif df_macd['MACD crossover']:
-        return 'buy'
-    else:
-        return '-'
+def run_analysis(data: StockData, indicator: str, args: argparse.Namespace) -> None:
+    """Print the result table for one already downloaded ticker."""
+    frame, signal_columns = calculate(indicator, data.history["Close"], args)
+    view = indicators.only_signals(frame, signal_columns) if args.signals_only else frame
+    print(f"\n{INDICATOR_LABELS[indicator]} – {data.ticker} ({data.period})")
+    print(f"\n{view.tail(args.tail).to_string()}")
+    if args.signals_only and view.empty:
+        print("\n(no buy/sell signal in the selected period)")
 
 
-def bb_calc(pa):
-    print("\n\n=================================== Bollinger Bands ================================\n")
-    std_dev = float(input('Which value should be used as standard deveation? '))
-    middle_bb_period = int(input('Which time period (in days) should be used to calculate the middle Bollinger Band? '))
-    
-    middle_bb = pa['Close'].rolling(window=middle_bb_period).mean()
-    applic_dev = pa['Close'].rolling(window=middle_bb_period).std()
-    upper_bb = middle_bb + (std_dev * applic_dev)
-    lower_bb = middle_bb - (std_dev * applic_dev)
-    
-    bb_signals = np.where(pa['Close'] >= upper_bb,'sell', np.where(pa['Close'] <= lower_bb,'buy','-'))
-    df_bb = pd.DataFrame({
-        'Price': pa['Close'],
-        'Lower BB': lower_bb,
-        'Middle BB': middle_bb,
-        'Upper BB': upper_bb,
-        'Signal': bb_signals
-        })
-    
-    df_bb_only_signals = df_bb[df_bb['Signal'].isin(['buy','sell'])]
-    
-    return std_dev, applic_dev, middle_bb, upper_bb, lower_bb, bb_signals, df_bb, df_bb_only_signals
+def print_overview(data: StockData) -> None:
+    """Print company info and the most recent prices."""
+    from market_data import overview_frame
+
+    print(f"\n======= Overview about {data.ticker} ({data.period}) =======\n")
+    print(overview_frame(data.info).to_string(index=False))
+    print("\nMost recent prices:\n")
+    print(data.history.tail(20).to_string())
 
 
-def df_signals_calc(pa, df_rsi, df_macd, df_bb):
-    print('\n\n==================================  All indicators ===================================')
-    df_all_signals = pd.DataFrame({
-        'Price' : pa['Close'],
-        'RSI signals' : df_rsi['Signal'],
-        'MACD signals' : df_macd['Signal'],
-        'BB signals' : df_bb['Signal']
-        })
-    
-    df_only_signals = df_all_signals[
-        (df_all_signals['RSI signals'].isin(['buy', 'sell'])) | 
-        (df_all_signals['MACD signals'].isin(['buy', 'sell'])) | 
-        (df_all_signals['BB signals'].isin(['buy', 'sell']))
-    ]    
-    return df_all_signals, df_only_signals
+def _configure_display() -> None:
+    pd.set_option("display.max_columns", None)
+    pd.set_option("display.max_rows", None)
+    pd.set_option("display.width", None)
+    pd.set_option("display.expand_frame_repr", False)
+    # yfinance logs retries, HTTP 404s and "possibly delisted" hints that
+    # would only duplicate our own error messages
+    logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 
-#mainprogramm
-while True:
+def _analyze_ticker(data: StockData, indicator: str, args: argparse.Namespace) -> None:
+    print_overview(data)
+    run_analysis(data, indicator, args)
 
-    tickersymbol = input("\nWhich stock should be researched? Please specify the ticker symbol, e.g. AAPL.\n").upper()
-    period = input("Over what time period should the stock be researched, e.g. 1y, 3mo?\n")
-    
-    xyz = show_stock_overview(tickersymbol, period)
 
-    
-    if xyz is False:
-        continue
+def _interactive(args: argparse.Namespace) -> int:
+    print(
+        "\nStock Analyzer – technical analysis, not investment advice.\n"
+        "Enter 'q' at any prompt to quit."
+    )
+    while True:
+        raw_ticker = input("\nWhich stock should be researched? Ticker symbol, e.g. AAPL: ").strip()
+        if raw_ticker.lower() in QUIT_WORDS:
+            return 0
+        period = input("Over what time period, e.g. 1y, 3mo? [1y]: ").strip() or args.period
+        raw_indicator = input("Which indicator? (RSI, MACD, Bollinger Bands, All): ").strip()
+        if raw_indicator.lower() in QUIT_WORDS:
+            return 0
 
-    pa = yf.Ticker(tickersymbol).history(period)
-    
-    
-    choice1 = input("\nWhich indicator should be used? (RSI, MACD, Bollinger Bands, All Indicators): ").upper()
-    if choice1 not in ['RSI', 'MACD', 'BOLLINGER BANDS', 'ALL INDICATORS']:
-        print("Invalid input. Please try again.")
-        continue
-    
-    
-    elif choice1 == 'RSI':
-        rsi, avg_gain, avg_loss, daily_diff, signal, df_rsi, rsi_only_signals, rsi_period = rsi_calc(pa)
-
-        print(f'\n{df_rsi.tail(50).to_string(col_space=15)}')
-        
-        choice1_1 = input('\nDo you just want to see the signals?(yes/no)').lower()
-        if choice1_1 == 'yes':
-            print(f'\n{rsi_only_signals}')
-            
-            
-#             choice1_1_1 = input('\nDo you want to analyze the stock with all possible indicators?(yes/no)').lower()
-#             if choice1_1_1 == 'yes':
-#                 
-#                 
-#             else:
-#                 continue
-
-            
-        else:
+        indicator = normalize_indicator(raw_indicator)
+        if indicator is None:
+            print(f"Unknown indicator {raw_indicator!r}. Please use RSI, MACD, Bollinger Bands or All.")
             continue
 
-        continue
-    
-    
-    elif choice1 == 'MACD':
-        
-        ema_small, ema_big, ema_signal, macd, macd_diff_crossunder, macd_diff_crossover, df_macd, df_macd_only_signals = macd_calc(pa)
-        
-        #df_macd['Signal'] = df_macd.apply(show_buy_sell_signals_macd, axis=1)
-        print(f'\n{df_macd.tail(50).to_string(col_space=15)}')
-        #df_macd_only_signals = df_macd[df_macd['Signal'].isin(['buy','sell'])]
-        
-        choice1_2 = input('\nDo you just want to see the signals?(yes/no)').lower()
-        if choice1_2 == 'yes':
-            print(f'\n{df_macd_only_signals.to_string(col_space=15)}')
-                            
-        
-    elif choice1 == 'BOLLINGER BANDS':
-        
-        std_dev, applic_dev, middle_bb, upper_bb, lower_bb, bb_signals, df_bb, bb_only_signals = bb_calc(pa)
-    
-        print(f'\n{df_bb.tail(50).to_string(col_space=15)}')
-        
-        choice1_4 = input('Do you just want to see the signals?(yes/no)').lower()
-        if choice1_4 == 'yes':
-            print(f'{bb_only_signals.to_string()}')
+        try:
+            data = fetch_stock_data(raw_ticker, period)
+        except MarketDataError as exc:
+            print(exc)
+            continue
 
-        else:
+        try:
+            _analyze_ticker(data, indicator, args)
+        except ValueError as exc:
+            print(f"Invalid parameter: {exc}")
             continue
 
 
-    elif choice1 == 'ALL INDICATORS':
-        rsi, avg_gain, avg_loss, daily_diff, signal, df_rsi, rsi_only_signals,rsi_period = rsi_calc(pa)
-        ema_small, ema_big, ema_signal, macd, macd_diff_crossunder, macd_diff_crossover, df_macd, df_macd_only_signals = macd_calc(pa)
-        std_dev, applic_dev, middle_bb, upper_bb, lower_bb, bb_signal, df_bb, df_bb_only_signals = bb_calc(pa)
-        
-        df_all_signals, df_only_signals = df_signals_calc(pa, df_rsi, df_macd, df_bb)
-        
-        #xyz = df_signals_calc(pa, rsi_only_signals, df_macd_only_signals, bb_only_signals)
-        print(f'\n{df_only_signals}')
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.tail < 1:
+        parser.error("--tail must be >= 1")
+
+    _configure_display()
+
+    if not args.ticker or not args.indicator:
+        return _interactive(args)
+
+    indicator = normalize_indicator(args.indicator)
+    if indicator is None:
+        parser.error(f"unknown indicator {args.indicator!r}; use rsi, macd, bollinger or all")
+
+    try:
+        data = fetch_stock_data(args.ticker, args.period)
+        _analyze_ticker(data, indicator, args)
+    except MarketDataError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
