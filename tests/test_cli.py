@@ -100,6 +100,27 @@ def test_main_rejects_unknown_indicator():
         stock_analyser.main(["AAPL", "1y", "dow jones"])
 
 
+def test_main_reports_invalid_parameter_instead_of_crashing(monkeypatch, capsys):
+    monkeypatch.setattr(stock_analyser, "fetch_stock_data", lambda ticker, period: fake_data(ticker, period))
+
+    exit_code = stock_analyser.main(["AAPL", "1y", "rsi", "--rsi-period", "1"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "invalid parameter" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_main_reports_invalid_macd_parameters(monkeypatch, capsys):
+    monkeypatch.setattr(stock_analyser, "fetch_stock_data", lambda ticker, period: fake_data(ticker, period))
+
+    exit_code = stock_analyser.main(["AAPL", "1y", "macd", "--macd-fast", "30", "--macd-slow", "26"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "invalid parameter" in captured.err
+
+
 def test_main_rejects_invalid_tail():
     with pytest.raises(SystemExit):
         stock_analyser.main(["AAPL", "1y", "rsi", "--tail", "0"])
@@ -108,6 +129,32 @@ def test_main_rejects_invalid_tail():
 def test_main_quits_from_interactive_menu(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": "q")
     assert stock_analyser.main([]) == 0
+
+
+def test_interactive_loop_quits_at_period_prompt(monkeypatch):
+    answers = iter(["AAPL", "q"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+    assert stock_analyser.main([]) == 0
+
+
+def test_interactive_loop_uses_given_ticker(monkeypatch, capsys):
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        stock_analyser,
+        "fetch_stock_data",
+        lambda ticker, period: (calls.append((ticker, period)), fake_data(ticker, period))[1],
+    )
+    answers = iter(["1y", "rsi", "q"])  # period, indicator, then quit
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+    exit_code = stock_analyser.main(["AAPL"])  # ticker given, indicator missing
+
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert calls == [("AAPL", "1y")]  # the ticker prompt was skipped
+    assert "Overview about AAPL" in out
+    assert "RSI – AAPL (1y)" in out
 
 
 def test_interactive_loop_retries_after_bad_ticker(monkeypatch, capsys):

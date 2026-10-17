@@ -85,8 +85,11 @@ def macd(
     macd_line = ema_fast - ema_slow
     signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
 
-    # Ignore the warm-up phase, where the EMAs are not yet meaningful.
-    valid = macd_line.notna() & signal_line.notna()
+    # The EMAs are defined from the first row on but only meaningful after a
+    # warm-up phase; suppress every signal that would be based on fewer values
+    # than the slow EMA and the signal line need.
+    warmup = slow + signal_period - 1
+    valid = pd.Series(np.arange(len(close)) >= warmup, index=close.index)
     above = macd_line > signal_line
     crossover = valid & above & ~above.shift(1, fill_value=False)
     crossunder = valid & ~above & above.shift(1, fill_value=False)

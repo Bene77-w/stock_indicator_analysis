@@ -93,16 +93,23 @@ def test_macd_of_flat_market_has_no_signal():
 
 
 def test_macd_signals_a_full_cycle():
-    up = [100.0 + i for i in range(30)]
-    down = [up[-1] - i for i in range(1, 21)]
-    result = macd(prices(up + down), fast=12, slow=26, signal_period=9)
+    flat = [100.0] * 40
+    up = [flat[-1] + i for i in range(1, 31)]
+    down = [up[-1] - i for i in range(1, 26)]
+    result = macd(prices(flat + up + down), fast=12, slow=26, signal_period=9)
+    warmup = result.index[26 + 9 - 1]  # no signals before slow + signal - 1 rows
+    assert (result.loc[:warmup, "Signal"] == NO_SIGNAL).all()
     assert (result["Signal"] == BUY).any()
     assert (result["Signal"] == SELL).any()
-    # a signal is only emitted at the crossing itself, not on every later row,
-    # so the last sell must come after the price turned from up to down
-    last_sell = result.index[result["Signal"] == SELL][-1]
-    turn = result.index[len(up) - 1]
-    assert last_sell > turn
+    # the buy comes from the turn from flat to up, not from the warm-up
+    assert result.index[result["Signal"] == BUY][0] >= warmup
+
+
+def test_macd_ignores_the_warmup_phase():
+    # shorter than the default warm-up of 26 + 9 - 1 rows: a "buy" out of a
+    # two value EMA (as emitted before the fix) must not appear
+    result = macd(prices([100.0 + i for i in range(20)]), fast=12, slow=26, signal_period=9)
+    assert (result["Signal"] == NO_SIGNAL).all()
 
 
 def test_macd_rejects_fast_not_smaller_than_slow():

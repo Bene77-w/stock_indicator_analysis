@@ -162,12 +162,24 @@ def _interactive(args: argparse.Namespace) -> int:
         "\nStock Analyzer – technical analysis, not investment advice.\n"
         "Enter 'q' at any prompt to quit."
     )
+    ticker_hint = args.ticker
+    indicator_hint = args.indicator
     while True:
-        raw_ticker = input("\nWhich stock should be researched? Ticker symbol, e.g. AAPL: ").strip()
+        if ticker_hint is not None:
+            raw_ticker, ticker_hint = ticker_hint, None
+        else:
+            raw_ticker = input("\nWhich stock should be researched? Ticker symbol, e.g. AAPL: ").strip()
         if raw_ticker.lower() in QUIT_WORDS:
             return 0
+
         period = input("Over what time period, e.g. 1y, 3mo? [1y]: ").strip() or args.period
-        raw_indicator = input("Which indicator? (RSI, MACD, Bollinger Bands, All): ").strip()
+        if period.lower() in QUIT_WORDS:
+            return 0
+
+        if indicator_hint is not None:
+            raw_indicator, indicator_hint = indicator_hint, None
+        else:
+            raw_indicator = input("Which indicator? (RSI, MACD, Bollinger Bands, All): ").strip()
         if raw_indicator.lower() in QUIT_WORDS:
             return 0
 
@@ -210,6 +222,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         _analyze_ticker(data, indicator, args)
     except MarketDataError as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except ValueError as exc:  # invalid indicator parameters, e.g. --rsi-period 1
+        print(f"Error: invalid parameter: {exc}", file=sys.stderr)
         return 1
     return 0
 
