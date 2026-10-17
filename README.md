@@ -40,14 +40,28 @@ python3 stock_analyser.py --help                          # alle Optionen
 Parameter können überschrieben werden, zum Beispiel `--rsi-period 21`, `--macd-fast 12 --macd-slow 26 --macd-signal 9`,
 `--bb-period 20 --bb-std 2.0`, `--rsi-oversold 30 --rsi-overbought 70`.
 
+### Grafische Oberfläche (Browser)
+
+```bash
+python3 stock_analyser_gui.py
+```
+
+Danach im Browser http://127.0.0.1:5000 öffnen. Die Oberfläche bietet dasselbe Formular wie die
+Kommandozeile, dazu Kurs-Charts (mit Bollinger-Bändern, RSI mit Kauf/Verkauf-Grenzen und MACD),
+die letzten Kurswerte und eine Signalliste. Genauso wie im Terminalmodus werden Parameter
+abgefangen statt abstürzen zu können. Die Seite läuft nur lokal auf `127.0.0.1`; Chart.js wird
+per CDN geladen, die Kursdaten kommen weiterhin von Yahoo Finance.
+
 ## Projektstruktur
 
-| Datei                | Aufgabe                                                       |
-| -------------------- | ------------------------------------------------------------- |
-| `stock_analyser.py`  | Kommandozeilen-Oberfläche: Eingabe, Ausgabe, Ablaufsteuerung   |
-| `market_data.py`     | Datenabruf bei Yahoo Finance (einzige Stelle mit Netzwerkzugriff) |
-| `indicators.py`      | Reine Berechnung von RSI, MACD und Bollinger Bändern           |
-| `tests/`             | pytest-Tests für alle drei Module, ganz ohne Netzwerk          |
+| Datei                   | Aufgabe                                                       |
+| ----------------------- | --------------------------------------------------------------- |
+| `stock_analyser.py`     | Kommandozeilen-Oberfläche: Eingabe, Ausgabe, Ablaufsteuerung   |
+| `stock_analyser_gui.py` | Grafische Oberfläche im Browser (Flask + Chart.js)             |
+| `market_data.py`        | Datenabruf bei Yahoo Finance (einzige Stelle mit Netzwerkzugriff) |
+| `indicators.py`         | Reine Berechnung von RSI, MACD und Bollinger Bändern           |
+| `templates/index.html`  | Seitenvorlage der grafischen Oberfläche                        |
+| `tests/`                | pytest-Tests für alle Module, ganz ohne Netzwerk               |
 
 ## Tests
 
