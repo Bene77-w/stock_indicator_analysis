@@ -52,6 +52,16 @@ def test_rsi_is_bounded_and_padded_with_nan():
     assert ((valid >= 0) & (valid <= 100)).all()
 
 
+def test_rsi_matches_published_wilder_reference():
+    # StockCharts "RSI" ChartSchool example; its spreadsheet rounds the
+    # intermediate averages, hence the tolerance of 0.1
+    closes = [44.34, 44.09, 44.15, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08,
+              45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 45.64]
+    column = rsi(prices(closes), period=14)["RSI (14d)"]
+    assert column.iloc[:14].isna().all()
+    assert column.iloc[14:].tolist() == pytest.approx([70.53, 66.32, 66.55, 69.41, 66.36, 57.97], abs=0.1)
+
+
 def test_rsi_marks_prices_below_oversold_as_buy():
     # long rise, then a crash in the last three days
     values = [100.0 + i for i in range(30)] + [110.0, 95.0, 80.0]

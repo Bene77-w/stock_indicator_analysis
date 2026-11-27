@@ -28,8 +28,9 @@ def rsi(
 ) -> pd.DataFrame:
     """Relative Strength Index using Wilder's smoothing.
 
-    Average gains/losses are exponentially smoothed with ``alpha = 1 / period``,
-    which is Wilder's original definition (as used by TA-Lib and most charting
+    The first average gain/loss is the simple mean of the first ``period``
+    price changes, later values are smoothed with ``alpha = 1 / period``.
+    This is Wilder's original definition (as used by TA-Lib and most charting
     tools). Prices below ``oversold`` are marked ``buy``, prices above
     ``overbought`` are marked ``sell``.
     """
@@ -40,8 +41,8 @@ def rsi(
     delta = close.diff()
     gain = delta.clip(lower=0.0)
     loss = -delta.clip(upper=0.0)
-    avg_gain = gain.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    avg_gain = _wilder_average(gain, period)
+    avg_loss = _wilder_average(loss, period)
 
     with np.errstate(divide="ignore", invalid="ignore"):
         relative_strength = avg_gain / avg_loss
@@ -61,6 +62,19 @@ def rsi(
             "Signal": signal,
         }
     )
+
+
+def _wilder_average(changes: pd.Series, period: int) -> pd.Series:
+    """Wilder's smoothing, seeded with the simple mean of the first ``period`` changes.
+
+    ``changes`` starts with the NaN of ``diff()``, so the seed sits at
+    position ``period``; earlier rows stay NaN.
+    """
+    seeded = pd.Series(np.nan, index=changes.index, dtype="float64")
+    if len(changes) > period:
+        seeded.iloc[period] = changes.iloc[1 : period + 1].mean()
+        seeded.iloc[period + 1 :] = changes.iloc[period + 1 :]
+    return seeded.ewm(alpha=1 / period, adjust=False).mean()
 
 
 def macd(
