@@ -11,7 +11,7 @@ A Python tool that fetches stock data from Yahoo Finance and calculates technica
 
 ## Requirements
 
-- Python 3 with pip
+- Python 3.11 or newer with pip
 - Dependencies listed in `requirements.txt` (`pandas`, `numpy`, `yfinance`, `flask`)
 - Internet access to retrieve Yahoo Finance data
 
@@ -33,7 +33,7 @@ python3 -m pip install -r requirements.txt
 python3 stock_analyser.py
 ```
 
-The program asks for a ticker symbol (for example `AAPL`), a history period (for example `1y` or `3mo`) and an indicator. Enter `q` at any prompt to quit. Invalid input (unknown symbol, period or indicator) is caught and the prompt starts again.
+The program asks for a ticker symbol (for example `AAPL`), a history period (for example `1y` or `3mo`) and an indicator. Enter `q` at any prompt (or press `Ctrl+C`) to quit. Invalid input (unknown symbol, period or indicator) is caught and the prompt starts again.
 
 ### Command line
 
