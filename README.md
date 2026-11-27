@@ -1,76 +1,76 @@
-# Stock Analyzer
+# Stock Indicator Analysis
 
-Kleines Python-Kommandozeilenprogramm zur Analyse von Aktienkursen über Yahoo Finance.
-Es zeigt Unternehmens- und Kursdaten und berechnet wahlweise RSI, MACD oder Bollinger Bänder –
-einzeln oder alle zusammen mit kombinierter Signaltabelle.
+A Python tool that fetches stock data from Yahoo Finance and calculates technical indicators from historical closing prices, usable from the command line or in the browser.
+
+## Features
+
+- Display company details, price metrics, and the most recent rows of price history within the selected period.
+- Calculate the Relative Strength Index (RSI), Moving Average Convergence Divergence (MACD), or Bollinger Bands with user-specified settings.
+- View recent indicator values and optionally list only rows with buy or sell signals. Choose `all` to see the three indicators' signals side by side for dates when at least one generated a signal.
+- Browser GUI with price, RSI and MACD charts.
+
+## Requirements
+
+- Python 3 with pip
+- Dependencies listed in `requirements.txt` (`pandas`, `numpy`, `yfinance`, `flask`)
+- Internet access to retrieve Yahoo Finance data
 
 ## Installation
 
-Im Projektordner eine virtuelle Umgebung anlegen und die Abhängigkeiten installieren:
-
 ```bash
+git clone https://github.com/Bene77-w/stock_indicator_analysis.git
+cd stock_indicator_analysis
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
-## Start
+## Usage
 
-### Interaktiv
+### Interactive
 
 ```bash
 python3 stock_analyser.py
 ```
 
-Das Programm fragt Tickersymbol (zum Beispiel `AAPL`), Zeitraum (zum Beispiel `1y` oder `3mo`)
-und Indikator ab. Mit `q` an jeder Eingabeaufforderung beenden Sie das Programm.
-Ungültige Eingaben (falsches Symbol, unbekannter Zeitraum oder Indikator) werden abgefangen,
-die Abfrage startet erneut.
+The program asks for a ticker symbol (for example `AAPL`), a history period (for example `1y` or `3mo`) and an indicator. Enter `q` at any prompt to quit. Invalid input (unknown symbol, period or indicator) is caught and the prompt starts again.
 
-### Als Kommandozeilenbefehl
+### Command line
 
 ```bash
-python3 stock_analyser.py AAPL 1y rsi                     # RSI (14 Tage) über 1 Jahr
-python3 stock_analyser.py AAPL 6mo macd --signals-only    # nur Zeilen mit Kauf/Verkauf-Signal
-python3 stock_analyser.py AAPL 1y bollinger --bb-std 2.5  # Bollinger Bänder mit 2,5 Standardabweichungen
-python3 stock_analyser.py AAPL 1y all --tail 30           # alle Indikatoren kombiniert
-python3 stock_analyser.py --help                          # alle Optionen
+python3 stock_analyser.py AAPL 1y rsi                     # RSI (14 days) over 1 year
+python3 stock_analyser.py AAPL 6mo macd --signals-only    # only rows with a buy/sell signal
+python3 stock_analyser.py AAPL 1y bollinger --bb-std 2.5  # Bollinger Bands with 2.5 standard deviations
+python3 stock_analyser.py AAPL 1y all --tail 30           # all indicators combined
+python3 stock_analyser.py --help                          # all options
 ```
 
-Parameter können überschrieben werden, zum Beispiel `--rsi-period 21`, `--macd-fast 12 --macd-slow 26 --macd-signal 9`,
-`--bb-period 20 --bb-std 2.0`, `--rsi-oversold 30 --rsi-overbought 70`.
+Parameters can be overridden, for example `--rsi-period 21`, `--macd-fast 12 --macd-slow 26 --macd-signal 9`, `--bb-period 20 --bb-std 2.0`, `--rsi-oversold 30 --rsi-overbought 70`.
 
-### Grafische Oberfläche (Browser)
+### Browser GUI
 
 ```bash
 python3 stock_analyser_gui.py
 ```
 
-Danach im Browser http://127.0.0.1:5000 öffnen. Die Oberfläche bietet dasselbe Formular wie die
-Kommandozeile, dazu Kurs-Charts (mit Bollinger-Bändern, RSI mit Kauf/Verkauf-Grenzen und MACD),
-die letzten Kurswerte und eine Signalliste mit Datum. Genauso wie im Terminalmodus werden
-ungültige Eingaben abgefangen und als Meldung angezeigt statt abstürzen zu können.
-Die Seite läuft nur lokal auf `127.0.0.1`; Chart.js wird per CDN geladen, die Kursdaten kommen
-weiterhin von Yahoo Finance.
+Then open http://127.0.0.1:5000 in the browser. The GUI offers the same form as the command line, plus price charts (with Bollinger Bands, RSI with buy/sell thresholds, and MACD), the latest values and a list of signals with their dates. As in the terminal, invalid input is caught and shown as a message instead of crashing. The page only listens on `127.0.0.1`; Chart.js is loaded from a CDN, price data still comes from Yahoo Finance.
 
-Zwei Besonderheiten gegenüber dem Terminalmodus:
+Differences from the terminal mode:
 
-- Gleichem Ticker/Zeitraum wird nur einmal pro 5 Minuten nachgeladen – das Umschalten
-  zwischen den Indikatoren ist dadurch sofort, nutzt aber Daten von maximal 5 Minuten Alter.
-- Charts zeigen die letzten 252 Handelstage, die Signalliste die letzten 100 Signale
-  (mit Hinweis, wenn gekürzt wurde). `GET /health` liefert `{"status": "ok"}`, falls man
-  prüfen will, ob der Server läuft.
+- The same ticker/period is fetched at most once every 5 minutes, so switching between indicators is instant but uses data up to 5 minutes old.
+- Charts show the last 252 trading days, the signal list the last 100 signals (with a hint when it was truncated). `GET /health` returns `{"status": "ok"}` to check whether the server is running.
 
-## Projektstruktur
+## Project structure
 
-| Datei                   | Aufgabe                                                       |
-| ----------------------- | --------------------------------------------------------------- |
-| `stock_analyser.py`     | Kommandozeilen-Oberfläche: Eingabe, Ausgabe, Ablaufsteuerung   |
-| `stock_analyser_gui.py` | Grafische Oberfläche im Browser (Flask + Chart.js)             |
-| `market_data.py`        | Datenabruf bei Yahoo Finance (einzige Stelle mit Netzwerkzugriff) |
-| `indicators.py`         | Reine Berechnung von RSI, MACD und Bollinger Bändern           |
-| `templates/index.html`  | Seitenvorlage der grafischen Oberfläche                        |
-| `tests/`                | pytest-Tests für alle Module, ganz ohne Netzwerk               |
+| File                    | Purpose                                                      |
+| ----------------------- | ------------------------------------------------------------ |
+| `stock_analyser.py`     | Command-line interface: input, output, control flow          |
+| `stock_analyser_gui.py` | Browser GUI (Flask + Chart.js)                               |
+| `market_data.py`        | Yahoo Finance data access (the only module with network access) |
+| `indicators.py`         | Pure calculation of RSI, MACD and Bollinger Bands            |
+| `templates/index.html`  | Page template of the GUI                                     |
+| `tests/`                | pytest tests for all modules, fully offline                  |
+| `LICENSE`               | License terms                                                |
 
 ## Tests
 
@@ -79,17 +79,16 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m pytest
 ```
 
-Die Tests laufen offline: Der Netzwerkzugriff wird in `tests/test_market_data.py`,
-`tests/test_cli.py` und `tests/test_gui.py` durch Stubs ersetzt, die Indikator-Tests rechnen
-mit festen Kursreihen.
+The tests run offline: network access is replaced by stubs in `tests/test_market_data.py`, `tests/test_cli.py` and `tests/test_gui.py`; the indicator tests use fixed price series.
 
-## Rechenwege
+## Calculations
 
-- **RSI** nach Wilder: Gewinn-/Verlustmittel über exponentielle Glättung mit `alpha = 1/Periode`
-  (entspricht TA-Lib und gängigen Chartprogrammen), Kauf unter `--rsi-oversold`, Verkauf über `--rsi-overbought`.
-- **MACD** = EMA(kurz) − EMA(lang), Signallinie = EMA über dem MACD; kauft bei Überquerung der Signallinie von unten,
-  verkauft bei Unterquerung. Die Aufwärmphase der EMAs wird ignoriert.
-- **Bollinger Bänder** um einen gleitenden Durchschnitt; Kauf unter dem unteren Band, Verkauf über dem oberen Band.
-  Liegen beide Bänder auf dem Preis (keine Volatilität), gewinnt das Verkaufssignal.
+- **RSI** after Wilder: average gains/losses via exponential smoothing with `alpha = 1/period` (matches TA-Lib and common charting tools); buy below `--rsi-oversold`, sell above `--rsi-overbought`.
+- **MACD** = EMA(fast) − EMA(slow), signal line = EMA of the MACD; buy when MACD crosses the signal line from below, sell when it crosses from above. The EMA warm-up phase is ignored.
+- **Bollinger Bands** around a simple moving average; buy below the lower band, sell above the upper band. If both bands sit on the price (no volatility), the sell signal wins.
 
-Alle Ausgaben sind technische Kennzahlen und keine Anlageberatung.
+All output consists of technical indicators and is not investment advice.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
