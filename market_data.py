@@ -55,9 +55,12 @@ def fetch_stock_data(ticker: str, period: str = "1y") -> StockData:
     try:
         stock = yf.Ticker(ticker)
         history = stock.history(period=period)
-        info = stock.info or {}
     except Exception as exc:  # yfinance raises a mix of request and parse errors
         raise MarketDataError(f"Fetching data for {ticker} failed: {exc}") from exc
+    try:
+        info = stock.info or {}
+    except Exception:  # company info is optional, the overview shows N/A instead
+        info = {}
 
     if history.empty:
         raise MarketDataError(

@@ -32,6 +32,8 @@ class FakeTicker:
 
     @property
     def info(self):
+        if isinstance(self._info, Exception):
+            raise self._info
         return self._info
 
 
@@ -61,6 +63,15 @@ def test_fetch_downloads_history_and_info_in_one_pass(monkeypatch):
     assert not data.history.empty
     assert len(FakeTicker.instances) == 1  # one request, not two
     assert FakeTicker.instances[0].history_calls == ["6mo"]
+
+
+def test_fetch_tolerates_failing_company_info(monkeypatch):
+    _patch_ticker(monkeypatch, history_frame=history_frame(), info=RuntimeError("rate limited"))
+
+    data = fetch_stock_data("AAPL", "1y")
+
+    assert data.info == {}
+    assert not data.history.empty
 
 
 def test_fetch_rejects_empty_ticker(monkeypatch):
