@@ -188,3 +188,12 @@ def test_interactive_loop_retries_after_unknown_indicator(monkeypatch, capsys):
 
     assert stock_analyser.main([]) == 0
     assert "Unknown indicator" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("interrupt", [EOFError, KeyboardInterrupt])
+def test_interactive_menu_exits_cleanly_on_ctrl_d_and_ctrl_c(monkeypatch, interrupt):
+    def stop(prompt=""):
+        raise interrupt
+
+    monkeypatch.setattr("builtins.input", stop)
+    assert stock_analyser.main([]) == 0

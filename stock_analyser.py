@@ -209,7 +209,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     _configure_display()
 
     if not args.ticker or not args.indicator:
-        return _interactive(args)
+        try:
+            return _interactive(args)
+        except (EOFError, KeyboardInterrupt):  # Ctrl+D / Ctrl+C at a prompt
+            print()
+            return 0
 
     indicator = normalize_indicator(args.indicator)
     if indicator is None:
