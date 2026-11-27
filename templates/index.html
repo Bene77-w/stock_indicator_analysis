@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stock Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.js"
+          integrity="sha384-4W8gMhOYqk0FPg9sAMkb3g/P2fXtzbUyDUUgMlA1EEig8z/U/13EYUjErc1H382b"
+          crossorigin="anonymous"></script>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+    header {
+      padding: 1.2rem 1.5rem;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    header h1 { margin: 0; font-size: 1.3rem; }
+    header .note { margin: 0.3rem 0 0; color: #94a3b8; font-size: 0.85rem; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    form {
+      display: grid;
+      gap: 1rem;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 1.2rem;
+    }
+    fieldset { border: 1px solid #e2e8f0; border-radius: 8px; margin: 0; padding: 0.8rem 1rem; }
+    legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.4rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.7rem; }
+    label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: #334155; }
+    input, select {
+      font: inherit;
+      padding: 0.45rem 0.55rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #fff;
+    }
+    input:focus, select:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
+    button {
+      justify-self: start;
+      font: inherit;
+      font-weight: 600;
+      color: #fff;
+      background: #2563eb;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.55rem 1.4rem;
+      cursor: pointer;
+    }
+    button:hover { background: #1d4ed8; }
+    .error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      border-radius: 8px;
+      padding: 0.8rem 1rem;
+    }
+    section { margin-top: 1.8rem; }
+    h2 { margin: 0 0 0.8rem; }
+    h3 { margin: 0 0 0.6rem; font-size: 1rem; color: #334155; }
+    table { border-collapse: collapse; width: 100%; background: #fff; font-size: 0.9rem; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.4rem 0.6rem; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    thead th { background: #f1f5f9; }
+    table.overview { width: auto; min-width: 320px; }
+    table.overview td:last-child { text-align: right; }
+    .chart-box { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.8rem; margin-bottom: 1rem; }
+    .note { color: #64748b; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Stock Analyzer</h1>
+    <p class="note">Technical analysis, not investment advice. Data from Yahoo Finance.</p>
+  </header>
+
+  <main>
+    <form method="get" action="{{ url_for('index') }}">
+      <fieldset>
+        <legend>Target</legend>
+        <div class="grid">
+          <label>Ticker symbol
+            <input name="ticker" value="{{ ticker }}" placeholder="AAPL" autofocus>
+          </label>
+          <label>Period
+            <select name="period">
+              {% for p in periods %}
+              <option value="{{ p }}" {% if p == period %}selected{% endif %}>{{ p }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Indicator
+            <select name="indicator">
+              {% for key, label in indicators.items() %}
+              <option value="{{ key }}" {% if key == indicator %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Parameters (empty = default)</legend>
+        <div class="grid">
+          <label>RSI period <input name="rsi_period" value="{{ rsi_period }}" placeholder="14"></label>
+          <label>RSI oversold <input name="rsi_oversold" value="{{ rsi_oversold }}" placeholder="30"></label>
+          <label>RSI overbought <input name="rsi_overbought" value="{{ rsi_overbought }}" placeholder="70"></label>
+          <label>MACD fast <input name="macd_fast" value="{{ macd_fast }}" placeholder="12"></label>
+          <label>MACD slow <input name="macd_slow" value="{{ macd_slow }}" placeholder="26"></label>
+          <label>MACD signal <input name="macd_signal" value="{{ macd_signal }}" placeholder="9"></label>
+          <label>Bollinger period <input name="bb_period" value="{{ bb_period }}" placeholder="20"></label>
+          <label>Bollinger std dev <input name="bb_std" value="{{ bb_std }}" placeholder="2.0"></label>
+        </div>
+      </fieldset>
+
+      <button type="submit">Analyze</button>
+    </form>
+
+    {% if error %}
+    <p class="error">{{ error }}</p>
+    {% endif %}
+
+    {% if result %}
+    <section>
+      <h2>{{ result.ticker }} – {{ result.indicator }} ({{ result.period }})</h2>
+      <table class="overview">
+        {% for field, value in result.overview %}
+        <tr><td>{{ field }}</td><td>{{ value }}</td></tr>
+        {% endfor %}
+      </table>
+    </section>
+
+    <section>
+      <h3>Charts (last {{ result.charts[0]['labels'] | length }} trading days)</h3>
+      {% for spec in result.charts %}
+      <div class="chart-box"><canvas id="chart-{{ loop.index0 }}"></canvas></div>
+      {% endfor %}
+    </section>
+
+    <section>
+      <h3>Most recent values ({{ result.table_title }})</h3>
+      <table>
+        <thead>
+          <tr>{% for column in result.table.columns %}<th>{{ column }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in result.table.rows %}
+          <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h3>Signals</h3>
+      {% if result.signals.hidden %}
+      <p class="note">(no buy/sell signal in the selected period)</p>
+      {% else %}
+      {% if result.signals.truncated %}
+      <p class="note">(showing the last {{ result.signals.rows | length }} of {{ result.signals.total }} signals)</p>
+      {% endif %}
+      <table>
+        <thead>
+          <tr>{% for column in result.signals.columns %}<th>{{ column }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+          {% for row in result.signals.rows %}
+          <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </section>
+
+    <script>
+      const palette = ["#2563eb", "#0d9488", "#f59e0b", "#7c3aed", "#94a3b8", "#64748b"];
+      const charts = {{ result.charts | tojson }};
+
+      charts.forEach((spec, index) => {
+        const datasets = spec.datasets.map((dataset, position) => ({
+          label: dataset.label,
+          data: dataset.data,
+          borderColor: palette[position % palette.length],
+          backgroundColor: "transparent",
+          borderWidth: position === 0 ? 2 : 1.5,
+          borderDash: dataset.dashed ? [6, 4] : [],
+          pointRadius: 0,
+          pointHitRadius: 8,
+          spanGaps: true,
+          tension: 0.15,
+        }));
+
+        spec.thresholds.forEach((threshold, position) => {
+          datasets.push({
+            label: threshold.label + " (" + threshold.value + ")",
+            data: spec.labels.map(() => threshold.value),
+            borderColor: position === 0 ? "#16a34a" : "#dc2626",
+            backgroundColor: "transparent",
+            borderDash: [4, 4],
+            borderWidth: 1,
+            pointRadius: 0,
+          });
+        });
+
+        new Chart(document.getElementById("chart-" + index), {
+          type: "line",
+          data: { labels: spec.labels, datasets: datasets },
+          options: {
+            responsive: true,
+            aspectRatio: 2.4,
+            interaction: { mode: "index", intersect: false },
+            scales: {
+              x: { ticks: { maxTicksLimit: 12, autoSkip: true, maxRotation: 0 } },
+              y: spec.bounds ? { min: spec.bounds[0], max: spec.bounds[1] } : {},
+            },
+            plugins: { legend: { position: "bottom", labels: { boxWidth: 14 } } },
+          },
+        });
+      });
+    </script>
+    {% endif %}
+  </main>
+</body>
+</html>
