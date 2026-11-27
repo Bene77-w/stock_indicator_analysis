@@ -19,7 +19,7 @@ from typing import Sequence
 import pandas as pd
 
 import indicators
-from market_data import MarketDataError, StockData, fetch_stock_data
+from market_data import MarketDataError, StockData, fetch_stock_data, overview_frame
 
 QUIT_WORDS = frozenset({"q", "quit", "exit"})
 INDICATOR_ALIASES = {
@@ -134,8 +134,6 @@ def run_analysis(data: StockData, indicator: str, args: argparse.Namespace) -> N
 
 def print_overview(data: StockData) -> None:
     """Print company info and the most recent prices."""
-    from market_data import overview_frame
-
     print(f"\n======= Overview about {data.ticker} ({data.period}) =======\n")
     print(overview_frame(data.info).to_string(index=False))
     print("\nMost recent prices:\n")
