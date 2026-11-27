@@ -57,7 +57,10 @@ def get_stock(ticker: str, period: str) -> StockData:
     if entry is not None and time.time() - entry[0] < CACHE_TTL_SECONDS:
         return entry[1]
     data = fetch_stock_data(ticker, period)
-    _cache[key] = (time.time(), data)
+    now = time.time()
+    for stale in [k for k, (stored, _) in _cache.items() if now - stored >= CACHE_TTL_SECONDS]:
+        del _cache[stale]
+    _cache[key] = (now, data)
     return data
 
 

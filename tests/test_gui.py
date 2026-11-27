@@ -229,6 +229,28 @@ def test_cache_reuses_the_download(monkeypatch):
     gui.clear_cache()
 
 
+def test_cache_downloads_again_after_expiry_and_drops_stale_entries(monkeypatch):
+    calls: list[tuple[str, str]] = []
+    clock = [1000.0]
+
+    def record(ticker, period):
+        calls.append((ticker, period))
+        return fake_data(ticker, period)
+
+    gui.clear_cache()
+    monkeypatch.setattr(gui, "fetch_stock_data", record)
+    monkeypatch.setattr(gui.time, "time", lambda: clock[0])
+
+    gui.get_stock("AAPL", "1y")
+    gui.get_stock("MSFT", "1y")
+    clock[0] += gui.CACHE_TTL_SECONDS
+    gui.get_stock("AAPL", "1y")
+
+    assert calls == [("AAPL", "1y"), ("MSFT", "1y"), ("AAPL", "1y")]
+    assert set(gui._cache) == {("AAPL", "1y")}  # expired MSFT entry removed
+    gui.clear_cache()
+
+
 def test_signals_payload_reports_truncation(monkeypatch):
     monkeypatch.setattr(gui, "SIGNAL_ROWS_MAX", 2)
     frames = gui.build_frames("rsi", fake_data(rows=80).history["Close"], _params())
